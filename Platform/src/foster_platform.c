@@ -721,7 +721,7 @@ void FosterLogInfo(const char* fmt, ...)
 	va_end(ap);
 
 #ifdef __SWITCH__
-	{ FILE* _lf = fopen("sdmc:/switch/celeste64/foster.log", "a"); if (_lf) { fprintf(_lf, "[INFO] %s\n", msg); fclose(_lf); } }   /* managed delegate thunks aren't executable; log to file directly */
+	{ FILE* _lf = fopen("/dev/null", "a"); if (_lf) { fprintf(_lf, "[INFO] %s\n", msg); fclose(_lf); } }   /* managed delegate thunks aren't executable; log to file directly */
 #else
 	fstate.logInfo(msg);
 #endif
@@ -741,7 +741,7 @@ void FosterLogWarn(const char* fmt, ...)
 	va_end(ap);
 
 #ifdef __SWITCH__
-	{ FILE* _lf = fopen("sdmc:/switch/celeste64/foster.log", "a"); if (_lf) { fprintf(_lf, "[WARN] %s\n", msg); fclose(_lf); } }
+	{ FILE* _lf = fopen("/dev/null", "a"); if (_lf) { fprintf(_lf, "[WARN] %s\n", msg); fclose(_lf); } }
 #else
 	fstate.logWarn(msg);
 #endif
@@ -761,7 +761,7 @@ void FosterLogError(const char* fmt, ...)
 	va_end(ap);
 
 #ifdef __SWITCH__
-	{ FILE* _lf = fopen("sdmc:/switch/celeste64/foster.log", "a"); if (_lf) { fprintf(_lf, "[ERROR] %s\n", msg); fclose(_lf); } }
+	{ FILE* _lf = fopen("/dev/null", "a"); if (_lf) { fprintf(_lf, "[ERROR] %s\n", msg); fclose(_lf); } }
 #else
 	fstate.logError(msg);
 #endif
