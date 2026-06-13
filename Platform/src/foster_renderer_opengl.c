@@ -986,6 +986,17 @@ void FosterPrepare_OpenGL()
 	#ifdef __EMSCRIPTEN__
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+	#elif defined(__SWITCH__)
+		// Switch (switch-mesa) only provides OpenGL ES via EGL — a desktop core
+		// profile context fails with "Could not create GLES window surface".
+		// Request a GLES 3.x context, no core/forward-compat flags, no MSAA on the
+		// default framebuffer (the EGL config selection rejects 4x MSAA here).
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+		SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 	#else
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -1265,6 +1276,32 @@ void FosterTargetDestroy_OpenGL(FosterTarget* target)
 	SDL_free(tar);
 }
 
+#ifdef __SWITCH__
+// switch-mesa only supports GLSL ES. Rewrite a desktop "#version 330" shader to
+// "#version 300 es" and inject default precision (required by GLES fragment shaders).
+// Returns a newly SDL_malloc'd string, or NULL if no "#version 330" was present.
+// The body of these shaders (layout/in/out/texture()) is already ES-3.00 compatible.
+static char* FosterRewriteShaderES(const char* src)
+{
+	const char* marker = "#version 330";
+	const char* p = strstr(src, marker);
+	if (p == NULL)
+		return NULL;
+	// skip to the end of the #version line
+	const char* rest = p + strlen(marker);
+	while (*rest && *rest != '\n') rest++;
+	if (*rest == '\n') rest++;
+	const char* header = "#version 300 es\nprecision highp float;\nprecision highp int;\n";
+	size_t len = strlen(header) + strlen(rest) + 1;
+	char* out = (char*)SDL_malloc(len);
+	if (out == NULL)
+		return NULL;
+	strcpy(out, header);
+	strcat(out, rest);
+	return out;
+}
+#endif
+
 FosterShader* FosterShaderCreate_OpenGL(FosterShaderData* data)
 {
 	GLchar log[1024] = { 0 };
@@ -1288,8 +1325,15 @@ FosterShader* FosterShaderCreate_OpenGL(FosterShaderData* data)
 	vertexShader = fgl.glCreateShader(GL_VERTEX_SHADER);
 	{
 		source = (const GLchar*)data->vertexShader;
+		#ifdef __SWITCH__
+		char* esVert = FosterRewriteShaderES(source);
+		if (esVert) source = esVert;
+		#endif
 		fgl.glShaderSource(vertexShader, 1, &source, NULL);
 		fgl.glCompileShader(vertexShader);
+		#ifdef __SWITCH__
+		if (esVert) SDL_free(esVert);
+		#endif
 		fgl.glGetShaderInfoLog(vertexShader, 1024, &logLength, log);
 
 		GLint params;
@@ -1312,8 +1356,15 @@ FosterShader* FosterShaderCreate_OpenGL(FosterShaderData* data)
 	fragmentShader = fgl.glCreateShader(GL_FRAGMENT_SHADER);
 	{
 		source = (const GLchar*)data->fragmentShader;
+		#ifdef __SWITCH__
+		char* esFrag = FosterRewriteShaderES(source);
+		if (esFrag) source = esFrag;
+		#endif
 		fgl.glShaderSource(fragmentShader, 1, &source, NULL);
 		fgl.glCompileShader(fragmentShader);
+		#ifdef __SWITCH__
+		if (esFrag) SDL_free(esFrag);
+		#endif
 		fgl.glGetShaderInfoLog(fragmentShader, 1024, &logLength, log);
 
 		GLint params;

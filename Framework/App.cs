@@ -240,6 +240,16 @@ public static class App
 	/// </summary>
 	public static Action? OnExitRequested;
 
+	// Static native entry point for the platform's exit-request callback (see Run).
+	[UnmanagedCallersOnly]
+	private static void OnExitRequestNative()
+	{
+		if (OnExitRequested != null)
+			OnExitRequested();
+		else
+			Exit();
+	}
+
 	/// <summary>
 	/// The Main Thread that the Application was Run on
 	/// </summary>
@@ -295,31 +305,31 @@ public static class App
 		App.Name = applicationName;
 		var name = Platform.ToUTF8(applicationName);
 
-		Platform.FosterStartup(new()
+		// Callbacks are passed as static [UnmanagedCallersOnly] function pointers
+		// (not delegates) so they resolve to fixed .text addresses — required on
+		// NativeAOT/Switch where delegate-marshalling thunks can't be made executable.
+		unsafe
 		{
-			windowTitle = name,
-			applicationName = name,
-			width = width,
-			height = height,
-			renderer = renderer,
-			flags = App.flags,
-			onText = Input.OnText,
-			onKey = Input.OnKey,
-			onMouseButton = Input.OnMouseButton,
-			onMouseMove = Input.OnMouseMove,
-			onMouseWheel = Input.OnMouseWheel,
-			onControllerConnect = Input.OnControllerConnect,
-			onControllerDisconnect = Input.OnControllerDisconnect,
-			onControllerButton = Input.OnControllerButton,
-			onControllerAxis = Input.OnControllerAxis,
-			onExitRequest = () =>
+			Platform.FosterStartup(new()
 			{
-				if (OnExitRequested != null)
-					OnExitRequested();
-				else
-					Exit();
-			}
-		});
+				windowTitle = name,
+				applicationName = name,
+				width = width,
+				height = height,
+				renderer = renderer,
+				flags = App.flags,
+				onText = &Input.OnText,
+				onKey = &Input.OnKey,
+				onMouseButton = &Input.OnMouseButton,
+				onMouseMove = &Input.OnMouseMove,
+				onMouseWheel = &Input.OnMouseWheel,
+				onControllerConnect = &Input.OnControllerConnect,
+				onControllerDisconnect = &Input.OnControllerDisconnect,
+				onControllerButton = &Input.OnControllerButton,
+				onControllerAxis = &Input.OnControllerAxis,
+				onExitRequest = &OnExitRequestNative
+			});
+		}
 
 		UserPath = Platform.ParseUTF8(Platform.FosterGetUserPath());
 		Graphics.Initialize();

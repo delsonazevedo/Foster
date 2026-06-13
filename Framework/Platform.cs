@@ -52,8 +52,12 @@ internal static class Platform
 	[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 	public delegate void FosterWriteFn(IntPtr context, IntPtr data, int size);
 
+	// NOTE: the callback fields are raw unmanaged function pointers, not delegates.
+	// NativeAOT marshals delegates to runtime thunks that need executable memory,
+	// which the Switch (W^X) cannot provide -> calling them is an Instruction Abort.
+	// [UnmanagedCallersOnly] static methods give static .text pointers instead.
 	[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-	public struct FosterDesc
+	public unsafe struct FosterDesc
 	{
 		public IntPtr windowTitle;
 		public IntPtr applicationName;
@@ -61,16 +65,16 @@ internal static class Platform
 		public int height;
 		public Renderers renderer;
 		public FosterFlags flags;
-		public FosterExitRequestFn onExitRequest;
-		public FosterOnTextFn onText;
-		public FosterOnKeyFn onKey;
-		public FosterOnMouseButtonFn onMouseButton;
-		public FosterOnMouseMoveFn onMouseMove;
-		public FosterOnMouseWheelFn onMouseWheel;
-		public FosterOnControllerConnectFn onControllerConnect;
-		public FosterOnControllerDisconnectFn onControllerDisconnect;
-		public FosterOnControllerButtonFn onControllerButton;
-		public FosterOnControllerAxisFn onControllerAxis;
+		public delegate* unmanaged<void> onExitRequest;
+		public delegate* unmanaged<IntPtr, void> onText;
+		public delegate* unmanaged<int, byte, void> onKey;
+		public delegate* unmanaged<int, byte, void> onMouseButton;
+		public delegate* unmanaged<float, float, void> onMouseMove;
+		public delegate* unmanaged<float, float, void> onMouseWheel;
+		public delegate* unmanaged<int, IntPtr, int, int, byte, ushort, ushort, ushort, void> onControllerConnect;
+		public delegate* unmanaged<int, void> onControllerDisconnect;
+		public delegate* unmanaged<int, int, byte, void> onControllerButton;
+		public delegate* unmanaged<int, int, float, void> onControllerAxis;
 	}
 
 	[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]

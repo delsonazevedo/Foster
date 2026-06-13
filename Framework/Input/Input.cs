@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace Foster.Framework;
 
@@ -93,6 +94,7 @@ public static class Input
 		return Platform.ParseUTF8(ptr);
 	}
 
+	[UnmanagedCallersOnly]
 	internal static unsafe void OnText(IntPtr cstr)
 	{
 		byte* ptr = (byte*)cstr;
@@ -119,10 +121,11 @@ public static class Input
 	/// <summary>
 	/// Invoked by the Application platform when a Key state is changed
 	/// </summary>
+	[UnmanagedCallersOnly]
 	internal static void OnKey(int key, byte pressed)
 	{
 		if (key < 0 || key >= Keyboard.MaxKeys)
-			throw new ArgumentOutOfRangeException(nameof(key), "Value is out of Range for supported keys");
+			return; // [UnmanagedCallersOnly] must not throw across the native boundary
 
 		if (pressed != 0)
 		{
@@ -140,10 +143,11 @@ public static class Input
 	/// <summary>
 	/// Invoked by the Application platform when a Mouse Button state is changed
 	/// </summary>
+	[UnmanagedCallersOnly]
 	internal static void OnMouseButton(int button, byte pressed)
 	{
 		if (button < 0 || button >= Mouse.MaxButtons)
-			throw new ArgumentOutOfRangeException(nameof(button), "Value is out of Range for supported mouse buttons");
+			return; // [UnmanagedCallersOnly] must not throw across the native boundary
 
 		if (pressed != 0)
 		{
@@ -161,6 +165,7 @@ public static class Input
 	/// <summary>
 	/// Invoked by the Application platform when the Mouse Wheel state is changed
 	/// </summary>
+	[UnmanagedCallersOnly]
 	internal static void OnMouseMove(float offsetX, float offsetY)
 	{
 		Point2 size = new Point2(App.Width, App.Height);
@@ -173,6 +178,7 @@ public static class Input
 	/// <summary>
 	/// Invoked by the Application platform when the Mouse Wheel state is changed
 	/// </summary>
+	[UnmanagedCallersOnly]
 	internal static void OnMouseWheel(float offsetX, float offsetY)
 	{
 		nextState.Mouse.wheelValue = new Vector2(offsetX, offsetY);
@@ -181,6 +187,7 @@ public static class Input
 	/// <summary>
 	/// Invoked by the Application platform when a Controller is connected
 	/// </summary>
+	[UnmanagedCallersOnly]
 	internal static void OnControllerConnect(int index, IntPtr name, int buttonCount, int axisCount, byte isGamepad, ushort vendor, ushort product, ushort version)
 	{
 		if (index >= 0 && index < InputState.MaxControllers)
@@ -190,6 +197,7 @@ public static class Input
 	/// <summary>
 	/// Invoked by the Application platform when a Controller is disconnected
 	/// </summary>
+	[UnmanagedCallersOnly]
 	internal static void OnControllerDisconnect(int index)
 	{
 		if (index >= 0 && index < InputState.MaxControllers)
@@ -199,6 +207,7 @@ public static class Input
 	/// <summary>
 	/// Invoked by the Application platform when a Controller Button state is changed
 	/// </summary>
+	[UnmanagedCallersOnly]
 	internal static void OnControllerButton(int index, int button, byte pressed)
 	{
 		if (index >= 0 && index < InputState.MaxControllers && button >= 0 && button < Controller.MaxButtons)
@@ -220,6 +229,7 @@ public static class Input
 	/// <summary>
 	/// Invoked by the Application platform when a Controller Axis state is changed
 	/// </summary>
+	[UnmanagedCallersOnly]
 	internal static void OnControllerAxis(int index, int axis, float value)
 	{
 		if (index >= 0 && index < InputState.MaxControllers && axis >= 0 && axis < Controller.MaxAxis)

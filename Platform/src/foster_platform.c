@@ -2,6 +2,9 @@
 #include "foster_renderer.h"
 #include "foster_internal.h"
 #include <SDL.h>
+#ifdef __SWITCH__
+#include <stdio.h>   /* Switch: native logs go to printf -> __wrap_write -> boot.log */
+#endif
 
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
@@ -111,6 +114,21 @@ void FosterStartup(FosterDesc desc)
 	if (fstate.device.prepare)
 		fstate.device.prepare();
 
+#ifdef __SWITCH__
+	// The Switch framebuffer is the console resolution (1920x1080), not the
+	// requested 1280x720. Creating a smaller window leaves the rendered image in a
+	// corner of the larger framebuffer (looks oversized/cropped). Create the window
+	// at the actual display size; Celeste64 scales its render target to fill it.
+	{
+		SDL_DisplayMode dm;
+		if (SDL_GetDesktopDisplayMode(0, &dm) == 0 && dm.w > 0 && dm.h > 0)
+		{
+			fstate.desc.width = dm.w;
+			fstate.desc.height = dm.h;
+		}
+	}
+#endif
+
 	// create the Window
 	fstate.window = SDL_CreateWindow(
 		(fstate.desc.windowTitle == NULL ? "Foster Application" : fstate.desc.windowTitle),
@@ -143,14 +161,38 @@ void FosterStartup(FosterDesc desc)
 	// toggle flags & show window
 	FosterSetFlags(fstate.desc.flags);
 	SDL_ShowWindow(fstate.window);
+
+#ifdef __SWITCH__
+	// Diagnose the Switch window/framebuffer/display sizes to fix scaling.
+	{
+		int ww = 0, wh = 0, pw = 0, ph = 0;
+		SDL_GetWindowSize(fstate.window, &ww, &wh);
+		SDL_GetWindowSizeInPixels(fstate.window, &pw, &ph);
+		SDL_DisplayMode dm; SDL_zero(dm);
+		SDL_GetDesktopDisplayMode(0, &dm);
+		FosterLogInfo("Switch sizes: window=%ix%i pixels=%ix%i desktop=%ix%i", ww, wh, pw, ph, dm.w, dm.h);
+	}
+#endif
 }
 
 void FosterRegisterLogMethods(FosterLogFn logInfo, FosterLogFn logWarn, FosterLogFn logError, FosterLogging logLevel)
 {
+#ifdef __SWITCH__
+	/* Switch/NativeAOT: managed delegate callbacks marshal to reverse-P/Invoke
+	   thunks that need executable memory, which svcSetMemoryPermission cannot
+	   grant -> calling them is an Instruction Abort. Drop the log callbacks
+	   (FosterLog* guard on NULL); native log output is unused on Switch. */
+	(void)logInfo; (void)logWarn; (void)logError; (void)logLevel;
+	fstate.logInfo = NULL;
+	fstate.logWarn = NULL;
+	fstate.logError = NULL;
+	fstate.logLevel = FOSTER_LOGGING_NONE;
+#else
 	fstate.logInfo = logInfo;
 	fstate.logWarn = logWarn;
 	fstate.logError = logError;
 	fstate.logLevel = logLevel;
+#endif
 }
 
 void FosterBeginFrame()
@@ -667,47 +709,62 @@ void FosterClear(FosterClearCommand* clear)
 
 void FosterLogInfo(const char* fmt, ...)
 {
+#ifndef __SWITCH__
 	if (fstate.logLevel == FOSTER_LOGGING_NONE ||
 		fstate.logInfo == NULL)
 		return;
-		
+#endif
 	char msg[FOSTER_MAX_MESSAGE_SIZE];
 	va_list ap;
 	va_start(ap, fmt);
 	SDL_vsnprintf(msg, sizeof(msg), fmt, ap);
 	va_end(ap);
 
+#ifdef __SWITCH__
+	{ FILE* _lf = fopen("sdmc:/switch/celeste64/foster.log", "a"); if (_lf) { fprintf(_lf, "[INFO] %s\n", msg); fclose(_lf); } }   /* managed delegate thunks aren't executable; log to file directly */
+#else
 	fstate.logInfo(msg);
+#endif
 }
 
 void FosterLogWarn(const char* fmt, ...)
 {
+#ifndef __SWITCH__
 	if (fstate.logLevel == FOSTER_LOGGING_NONE ||
 		fstate.logWarn == NULL)
 		return;
-
+#endif
 	char msg[FOSTER_MAX_MESSAGE_SIZE];
 	va_list ap;
 	va_start(ap, fmt);
 	SDL_vsnprintf(msg, sizeof(msg), fmt, ap);
 	va_end(ap);
 
+#ifdef __SWITCH__
+	{ FILE* _lf = fopen("sdmc:/switch/celeste64/foster.log", "a"); if (_lf) { fprintf(_lf, "[WARN] %s\n", msg); fclose(_lf); } }
+#else
 	fstate.logWarn(msg);
+#endif
 }
 
 void FosterLogError(const char* fmt, ...)
 {
+#ifndef __SWITCH__
 	if (fstate.logLevel == FOSTER_LOGGING_NONE ||
 		fstate.logError == NULL)
 		return;
-
+#endif
 	char msg[FOSTER_MAX_MESSAGE_SIZE];
 	va_list ap;
 	va_start(ap, fmt);
 	SDL_vsnprintf(msg, sizeof(msg), fmt, ap);
 	va_end(ap);
 
+#ifdef __SWITCH__
+	{ FILE* _lf = fopen("sdmc:/switch/celeste64/foster.log", "a"); if (_lf) { fprintf(_lf, "[ERROR] %s\n", msg); fclose(_lf); } }
+#else
 	fstate.logError(msg);
+#endif
 }
 
 int FosterFindJoystickIndexSDL(SDL_Joystick** joysticks, SDL_JoystickID instanceID)
@@ -910,10 +967,21 @@ FosterButtons FosterGetButtonFromSDL(SDL_GameControllerButton button)
 	switch (button)
 	{
 	case SDL_CONTROLLER_BUTTON_INVALID: return FOSTER_BUTTON_NONE;
+#ifdef __SWITCH__
+	// Nintendo's physical A/B and X/Y are swapped vs the Xbox positional layout SDL
+	// uses. Map by Nintendo label so the physical A (right) = the game's confirm
+	// (SOUTH) and physical B (bottom) = the game's cancel (EAST), like a Switch user
+	// expects, instead of feeling inverted relative to the PC build.
+	case SDL_CONTROLLER_BUTTON_A: return FOSTER_BUTTON_EAST;   // South position = labeled B
+	case SDL_CONTROLLER_BUTTON_B: return FOSTER_BUTTON_SOUTH;  // East  position = labeled A
+	case SDL_CONTROLLER_BUTTON_X: return FOSTER_BUTTON_NORTH;  // West  position = labeled Y
+	case SDL_CONTROLLER_BUTTON_Y: return FOSTER_BUTTON_WEST;   // North position = labeled X
+#else
 	case SDL_CONTROLLER_BUTTON_A: return FOSTER_BUTTON_SOUTH;
 	case SDL_CONTROLLER_BUTTON_B: return FOSTER_BUTTON_EAST;
 	case SDL_CONTROLLER_BUTTON_X: return FOSTER_BUTTON_WEST;
 	case SDL_CONTROLLER_BUTTON_Y: return FOSTER_BUTTON_NORTH;
+#endif
 	case SDL_CONTROLLER_BUTTON_BACK: return FOSTER_BUTTON_BACK;
 	case SDL_CONTROLLER_BUTTON_GUIDE: return FOSTER_BUTTON_SELECT;
 	case SDL_CONTROLLER_BUTTON_START: return FOSTER_BUTTON_START;
